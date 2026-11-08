@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-src 'none'; manifest-src 'self'; worker-src 'self'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Ausweis- oder DNI-Kopie feldweise verpixeln und mit Wasserzeichen versehen – komplett im Browser, ohne Upload. / Pixela tu DNI y añade marca de agua, sin subir nada.">
+<meta name="theme-color" content="#1f5f8b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Ausweis-Pixelator</title>
+<style>
+  :root{
+    --bg:#f4f3ef; --panel:#ffffff; --ink:#1d1d1b; --muted:#6b6a65; --line:#e2e0d9;
+    --accent:#1f5f8b; --accent-2:#e8f0f6; --red:#b3261e; --ok:#2e7d32;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  header{display:flex;align-items:baseline;gap:14px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.01em}
+  header .local{font-size:12px;color:var(--ok);font-weight:600}
+  section.foot{border-bottom:none}
+  .links{font-size:12px;color:var(--muted);margin-top:10px}
+  .links a{color:var(--accent);text-decoration:none}
+  .links a:hover{text-decoration:underline}
+  .app{display:grid;grid-template-columns:340px 1fr;height:calc(100% - 49px)}
+  aside{overflow-y:auto;background:var(--panel);border-right:1px solid var(--line);padding:6px 0 30px}
+  section{padding:12px 16px;border-bottom:1px solid var(--line)}
+  section h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px;font-weight:700}
+  label{display:block}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row + .row{margin-top:8px}
+  .grow{flex:1}
+  input[type=text],select,textarea{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:#fff;color:inherit}
+  textarea{resize:vertical;min-height:54px}
+  input[type=range]{width:100%}
+  button{font:inherit;padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;white-space:nowrap}
+  button:hover{border-color:#c9c6bc}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{filter:brightness(1.08)}
+  button.active{background:var(--accent-2);border-color:var(--accent);color:var(--accent)}
+  button.small{padding:3px 8px;font-size:12px}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .lbl{font-size:12px;color:var(--muted);margin:8px 0 3px;display:flex;justify-content:space-between}
+  .note{font-size:12px;color:var(--muted);margin-top:8px}
+  .filebtns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .filebtn{border:1px dashed #bdb9ad;border-radius:8px;padding:10px;text-align:center;cursor:pointer;font-size:13px;background:#fbfaf7}
+  .filebtn:hover{border-color:var(--accent)}
+  .filebtn.has{border-style:solid;border-color:var(--ok);color:var(--ok)}
+  .filebtn input{display:none}
+
+  #fieldList{list-style:none;margin:0;padding:0}
+  #fieldList li{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:7px;border:1px solid transparent}
+  #fieldList li.sel{border-color:var(--accent);background:var(--accent-2)}
+  #fieldList li input[type=text]{padding:3px 6px;border-color:transparent;background:transparent}
+  #fieldList li input[type=text]:focus{border-color:var(--line);background:#fff}
+  #fieldList li .del{border:none;background:none;color:var(--muted);font-size:16px;padding:0 4px}
+  #fieldList li .del:hover{color:var(--red)}
+  .empty{color:var(--muted);font-size:12px;padding:4px 0}
+
+  main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .tabs{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .tabs button{border:none;border-radius:0;padding:6px 14px}
+  .tabs button + button{border-left:1px solid var(--line)}
+  .sep{width:1px;height:22px;background:var(--line)}
+  #stageWrap{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px;min-height:0;position:relative}
+  #stage{position:relative;display:none;box-shadow:0 2px 14px rgba(0,0,0,.12);line-height:0}
+  #view{display:block;max-width:100%;max-height:calc(100vh - 190px);background:#fff}
+  #overlay{position:absolute;inset:0;touch-action:none;cursor:default}
+  #overlay.draw{cursor:crosshair}
+  .box{position:absolute;border:2px dashed rgba(31,95,139,.9);background:rgba(31,95,139,.06);cursor:move}
+  .box.on{border-color:rgba(179,38,30,.95);background:rgba(179,38,30,.07);border-style:solid}
+  .box.sel{outline:2px solid #ffd54a;outline-offset:1px}
+  .box.crop{border:2px solid #ffd54a;background:transparent;box-shadow:0 0 0 9999px rgba(0,0,0,.45)}
+  .box .tag{position:absolute;left:-2px;top:-20px;font:600 11px/1 -apple-system,Helvetica,Arial,sans-serif;background:rgba(31,95,139,.95);color:#fff;padding:4px 6px;border-radius:4px 4px 0 0;white-space:nowrap;pointer-events:none}
+  .box.on .tag{background:rgba(179,38,30,.95)}
+  .box.crop .tag{background:#ffd54a;color:#000}
+  .handle{position:absolute;width:14px;height:14px;background:#fff;border:2px solid var(--accent);border-radius:3px}
+  .box.on .handle{border-color:var(--red)}
+  .box.crop .handle{border-color:#c79a00}
+  .handle[data-c=nw]{left:-8px;top:-8px;cursor:nwse-resize}
+  .handle[data-c=ne]{right:-8px;top:-8px;cursor:nesw-resize}
+  .handle[data-c=sw]{left:-8px;bottom:-8px;cursor:nesw-resize}
+  .handle[data-c=se]{right:-8px;bottom:-8px;cursor:nwse-resize}
+  #overlay.noframes .box:not(.sel):not(.crop){border-color:transparent;background:transparent}
+  #overlay.noframes .box:not(.sel):not(.crop) .tag,#overlay.noframes .box:not(.sel):not(.crop) .handle{display:none}
+
+  #drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;width:min(520px,90%);aspect-ratio:85.6/54;border:2px dashed #bdb9ad;border-radius:14px;color:var(--muted);cursor:pointer;text-align:center;padding:20px;background:#fbfaf7}
+  #drop strong{color:var(--ink);font-size:15px}
+  #stageWrap.dragover #drop,#stageWrap.dragover #stage{outline:3px solid var(--accent);outline-offset:4px}
+  #hint{padding:8px 16px;font-size:12.5px;color:var(--muted);background:var(--panel);border-top:1px solid var(--line);min-height:34px}
+  #hint b{color:var(--ink)}
+  .cropbar{display:none;gap:8px}
+  .cropbar.show{display:flex}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:8px 14px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:10}
+  .toast.show{opacity:.95}
+  @media (max-width:820px){
+    .app{grid-template-columns:1fr;height:auto}
+    aside{border-right:none;order:2}
+    main{order:1}
+    #view{max-height:60vh}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1 data-i18n="title">Ausweis-Pixelator</h1>
+  <span class="local" data-i18n="local">● Läuft komplett lokal – nichts wird hochgeladen</span>
+  <div class="tabs" id="langTabs" style="margin-left:auto" title="Sprache / Idioma">
+    <button data-lang="de" class="small">DE</button>
+    <button data-lang="es" class="small">ES</button>
+  </div>
+</header>
+
+<div class="app">
+<aside>
+  <section>
+    <h2 data-i18n="s1">1 · Bilder laden</h2>
+    <div class="filebtns">
+      <label class="filebtn" id="fbFront"><span data-i18n="pickFront">Vorderseite wählen</span><input type="file" accept="image/*" data-side="front"></label>
+      <label class="filebtn" id="fbBack"><span data-i18n="pickBack">Rückseite wählen</span><input type="file" accept="image/*" data-side="back"></label>
+    </div>
+    <div class="note" data-i18n="s1note">Oder Bild in die Fläche rechts ziehen / mit ⌘V einfügen. Danach auf den Ausweis zuschneiden.</div>
+  </section>
+
+  <section>
+    <h2 data-i18n="s2">2 · Verwendungszweck (Profil)</h2>
+    <div class="row">
+      <select id="presetSel" class="grow"></select>
+    </div>
+    <div class="row">
+      <button id="presetLoad" class="primary" data-i18n="apply">Anwenden</button>
+      <button id="presetSave" data-i18n="presetSave">Aktuelle Auswahl speichern…</button>
+      <button id="presetDel" data-i18n="delete" data-i18n-title="presetDelTitle">Löschen</button>
+    </div>
+    <div class="note" data-i18n="s2note">Ein Profil merkt sich, welche Felder verpixelt werden, plus Empfänger und Wasserzeichen-Text.</div>
+  </section>
+
+  <section>
+    <h2><span data-i18n="s3">3 · Felder</span> <span id="sideLabel" style="text-transform:none;letter-spacing:0;font-weight:500"></span></h2>
+    <ul id="fieldList"></ul>
+    <div class="row" style="margin-top:8px">
+      <button id="allOn" class="small" data-i18n="allOn">Alle verpixeln</button>
+      <button id="allOff" class="small" data-i18n="allOff">Keine</button>
+      <button id="addField2" class="small" data-i18n="addFieldShort">+ Feld</button>
+    </div>
+    <div class="lbl" style="margin-top:12px"><span data-i18n="tplLabel">Feld-Vorlage für diese Seite</span></div>
+    <div class="row">
+      <select id="tplSel" class="grow">
+        <option value="de-front" data-i18n="tplDeFront">Personalausweis DE – Vorderseite</option>
+        <option value="de-back" data-i18n="tplDeBack">Personalausweis DE – Rückseite</option>
+        <option value="es-front" data-i18n="tplEsFront">DNI ES – Vorderseite</option>
+        <option value="es-back" data-i18n="tplEsBack">DNI ES – Rückseite</option>
+        <option value="none" data-i18n="tplNone">Leer (eigene Felder)</option>
+      </select>
+      <button id="tplApply" data-i18n="load">Laden</button>
+    </div>
+    <div class="note" data-i18n="s3note">Häkchen = wird verpixelt. Rahmen im Bild verschieben und an den Ecken anpassen. Doppelklick auf einen Rahmen schaltet ihn um. Die Positionen werden gespeichert.</div>
+  </section>
+
+  <section>
+    <h2 data-i18n="s4">4 · Unkenntlich machen</h2>
+    <div class="row">
+      <div class="tabs">
+        <button data-effect="pixel" data-i18n="pixel">Verpixeln</button>
+        <button data-effect="black" data-i18n="black">Schwärzen</button>
+      </div>
+    </div>
+    <div id="strengthWrap">
+      <div class="lbl"><span data-i18n="pixelSize">Pixelgröße</span><span id="strengthVal"></span></div>
+      <input type="range" id="strength" min="1.5" max="8" step="0.5">
+    </div>
+    <div class="note" data-i18n="s4note">Für Nummern und Unterschrift ist Schwärzen am sichersten. Kleine Pixel lassen sich teils rekonstruieren.</div>
+  </section>
+
+  <section>
+    <h2 data-i18n="s5">5 · Wasserzeichen</h2>
+    <label class="row"><input type="checkbox" id="wmOn"> <span data-i18n="wmOn">Wasserzeichen anwenden</span></label>
+    <div class="lbl"><span data-i18n="wmRecipient">Empfänger / Zweck → {destinatario}</span></div>
+    <input type="text" id="wmRecipient" data-i18n-ph="wmRecipientPh" placeholder="z. B. Inmobiliaria Sol – contrato de alquiler">
+    <div class="lbl"><span data-i18n="wmText">Text</span></div>
+    <textarea id="wmText"></textarea>
+    <div class="note" style="margin-top:2px" data-i18n-html="wmPlaceholders">Platzhalter: <code>{destinatario}</code>, <code>{fecha}</code> (Datum von heute)</div>
+    <div class="lbl"><span data-i18n="opacity">Deckkraft</span><span id="wmOpVal"></span></div>
+    <input type="range" id="wmOpacity" min="0.1" max="0.8" step="0.05">
+    <div class="lbl"><span data-i18n="fontSize">Schriftgröße</span><span id="wmSizeVal"></span></div>
+    <input type="range" id="wmSize" min="1.5" max="8" step="0.25">
+    <div class="lbl"><span data-i18n="spacing">Zeilenabstand</span><span id="wmSpVal"></span></div>
+    <input type="range" id="wmSpacing" min="1.4" max="6" step="0.1">
+    <div class="lbl"><span data-i18n="angle">Winkel</span><span id="wmAngVal"></span></div>
+    <input type="range" id="wmAngle" min="-60" max="60" step="1">
+    <div class="lbl"><span data-i18n="color">Farbe</span></div>
+    <div class="row">
+      <input type="color" id="wmColor" style="width:44px;height:30px;padding:0;border:1px solid var(--line);border-radius:6px">
+      <button class="small swatch" data-c="#b3261e" data-i18n="red">Rot</button>
+      <button class="small swatch" data-c="#1f5f8b" data-i18n="blue">Blau</button>
+      <button class="small swatch" data-c="#333333" data-i18n="grey">Grau</button>
+    </div>
+  </section>
+
+  <section>
+    <h2 data-i18n="s6">6 · Exportieren</h2>
+    <div class="lbl"><span data-i18n="pdfLabel">PDF (A4, beide Seiten)</span></div>
+    <div class="row">
+      <select id="pdfScale" class="grow">
+        <option value="1" data-i18n="scale100">Originalgröße (85,6 mm)</option>
+        <option value="1.5" selected data-i18n="scale150">150 % – gut lesbar</option>
+        <option value="2" data-i18n="scale200">200 %</option>
+      </select>
+      <button id="expPdf" class="primary">PDF</button>
+    </div>
+    <div class="row">
+      <button id="expCombined" class="grow" data-i18n="expCombined">Ein Bild (beide Seiten, JPG)</button>
+    </div>
+    <div class="row">
+      <button id="expFront" class="grow" data-i18n="expFront">Vorderseite PNG</button>
+      <button id="expBack" class="grow" data-i18n="expBack">Rückseite PNG</button>
+    </div>
+    <div class="note" data-i18n="s6note">Exportierte Bilder enthalten keine Metadaten (EXIF/GPS) des Originalfotos.</div>
+  </section>
+  <section class="foot">
+    <button id="clearData" class="small" data-i18n="clearData">Gespeicherte Daten löschen</button>
+    <div class="note" data-i18n="clearNote">Löscht Profile, Feldpositionen und Einstellungen aus diesem Browser.</div>
+    <div class="links">
+      <a href="privacy.html" data-i18n="privacy">Datenschutz</a> ·
+      <a href="legal.html" data-i18n="legal">Impressum</a>
+      <span id="offlineBadge" hidden> · <span data-i18n="offline">offline verfügbar</span></span>
+    </div>
+  </section>
+</aside>
+
+<main>
+  <div class="toolbar">
+    <div class="tabs" id="docTabs" data-i18n-title="docType">
+      <button data-doc="de" data-i18n="docDe">🇩🇪 Personalausweis</button>
+      <button data-doc="es" data-i18n="docEs">🇪🇸 DNI</button>
+    </div>
+    <span class="sep"></span>
+    <div class="tabs" id="sideTabs">
+      <button data-side="front" data-i18n="front">Vorderseite</button>
+      <button data-side="back" data-i18n="back">Rückseite</button>
+    </div>
+    <span class="sep"></span>
+    <button id="rotL" data-i18n-title="rotL">⟲</button>
+    <button id="rotR" data-i18n-title="rotR">⟳</button>
+    <button id="cropBtn" data-i18n="crop">Zuschneiden</button>
+    <span class="cropbar" id="cropBar">
+      <button id="cropDone" class="primary" data-i18n="cropDone">Zuschnitt übernehmen</button>
+      <button id="cropReset" data-i18n="cropReset">Ganzes Bild</button>
+    </span>
+    <span class="sep"></span>
+    <button id="addField" data-i18n="addField">+ Feld zeichnen</button>
+    <label class="row" style="gap:5px"><input type="checkbox" id="showFrames" checked> <span data-i18n="frames">Rahmen</span></label>
+  </div>
+  <div id="stageWrap">
+    <label id="drop">
+      <strong data-i18n="dropTitle">Ausweisfoto hier ablegen</strong>
+      <span data-i18n="dropSub">oder klicken zum Auswählen · Foto oder Scan</span>
+      <input type="file" accept="image/*" id="dropInput" style="display:none">
+    </label>
+    <div id="stage"><canvas id="view"></canvas><div id="overlay"></div></div>
+  </div>
+  <div id="hint"></div>
+</main>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+/* ---------- Sprachen ---------- */
+const I18N = {
+ de:{
+  title:'Ausweis-Pixelator', local:'● Läuft komplett lokal – nichts wird hochgeladen',
+  s1:'1 · Bilder laden', pickFront:'Vorderseite wählen', pickBack:'Rückseite wählen', loadedFront:'Vorderseite ✓', loadedBack:'Rückseite ✓',
+  s1note:'Oder Bild in die Fläche rechts ziehen / mit ⌘V einfügen. Danach auf den Ausweis zuschneiden.',
+  s2:'2 · Verwendungszweck (Profil)', apply:'Anwenden', presetSave:'Aktuelle Auswahl speichern…', delete:'Löschen', presetDelTitle:'Profil löschen',
+  s2note:'Ein Profil merkt sich, welche Felder verpixelt werden, plus Empfänger und Wasserzeichen-Text.',
+  s3:'3 · Felder', allOn:'Alle verpixeln', allOff:'Keine', addFieldShort:'+ Feld', tplLabel:'Feld-Vorlage für diese Seite',
+  tplDeFront:'Personalausweis DE – Vorderseite', tplDeBack:'Personalausweis DE – Rückseite', tplEsFront:'DNI ES – Vorderseite', tplEsBack:'DNI ES – Rückseite', tplNone:'Leer (eigene Felder)',
+  load:'Laden', s3note:'Häkchen = wird verpixelt. Rahmen im Bild verschieben und an den Ecken anpassen. Doppelklick auf einen Rahmen schaltet ihn um. Die Positionen werden gespeichert.',
+  s4:'4 · Unkenntlich machen', pixel:'Verpixeln', black:'Schwärzen', pixelSize:'Pixelgröße',
+  s4note:'Für Nummern und Unterschrift ist Schwärzen am sichersten. Kleine Pixel lassen sich teils rekonstruieren.',
+  s5:'5 · Wasserzeichen', wmOn:'Wasserzeichen anwenden', wmRecipient:'Empfänger / Zweck → {destinatario}', wmRecipientPh:'z. B. Inmobiliaria Sol – contrato de alquiler',
+  wmText:'Text', wmPlaceholders:'Platzhalter: <code>{destinatario}</code>, <code>{fecha}</code> (Datum von heute)',
+  opacity:'Deckkraft', fontSize:'Schriftgröße', spacing:'Zeilenabstand', angle:'Winkel', color:'Farbe', red:'Rot', blue:'Blau', grey:'Grau',
+  s6:'6 · Exportieren', pdfLabel:'PDF (A4, beide Seiten)', scale100:'Originalgröße (85,6 mm)', scale150:'150 % – gut lesbar', scale200:'200 %',
+  expCombined:'Ein Bild (beide Seiten, JPG)', expFront:'Vorderseite PNG', expBack:'Rückseite PNG',
+  s6note:'Exportierte Bilder enthalten keine Metadaten (EXIF/GPS) des Originalfotos.',
+  docType:'Ausweistyp', docDe:'🇩🇪 Personalausweis', docEs:'🇪🇸 DNI', front:'Vorderseite', back:'Rückseite',
+  rotL:'90° nach links drehen', rotR:'90° nach rechts drehen', crop:'Zuschneiden', cropDone:'Zuschnitt übernehmen', cropReset:'Ganzes Bild',
+  addField:'+ Feld zeichnen', frames:'Rahmen', dropTitle:'Ausweisfoto hier ablegen', dropSub:'oder klicken zum Auswählen · Foto oder Scan',
+  sideFront:'(Vorderseite)', sideBack:'(Rückseite)', cropArea:'Ausweis-Bereich', newField:'Feld', verpixeln:'verpixeln', delField:'Feld löschen',
+  noFields:'Keine Felder – Vorlage laden oder „+ Feld“.', noPresets:'– keine –',
+  hintLoad:s => `Lade die <b>${s}</b> deines Ausweises. Ein gerades Foto vor dunklem Hintergrund funktioniert am besten.`,
+  hintCrop:'<b>Zuschneiden:</b> Den gelben Rahmen genau an die Kanten des Ausweises ziehen, dann „Zuschnitt übernehmen“. Die Feldvorlagen passen nur, wenn der Ausweis das Bild ausfüllt.',
+  hintDraw:'<b>Neues Feld:</b> Im Bild ein Rechteck aufziehen.',
+  hintEdit:'Rote Rahmen werden verpixelt, blaue bleiben sichtbar. Rahmen ziehen/anpassen · Doppelklick = umschalten · Entf = ausgewähltes Feld löschen.',
+  errNotImage:'Bitte eine Bilddatei wählen (JPG, PNG, HEIC…).', errRead:'Bild konnte nicht gelesen werden. Bei HEIC ggf. als JPG exportieren.',
+  docEsLoaded:'Spanischer DNI – Felder geladen', docDeLoaded:'Deutscher Personalausweis – Felder geladen',
+  needImage:'Erst ein Bild laden.', confirmTpl:'Die Felder dieser Seite durch die Vorlage ersetzen?',
+  presetApplied:n => `Profil „${n}“ angewendet`, presetPrompt:'Name für dieses Profil (z. B. „Bank“, „Vermieter“, „Gimnasio“):',
+  presetOverwrite:n => `Profil „${n}“ überschreiben?`, presetSaved:'Profil gespeichert', presetDelete:n => `Profil „${n}“ löschen?`,
+  missing:s => `${s} fehlt.`, fileFront:'_Vorderseite', fileBack:'_Rueckseite',
+  preset_std:'Standard – Nummern & Unterschrift weg', preset_min:'Minimal – nur Name & Gültigkeit sichtbar',
+  clearData:'Gespeicherte Daten löschen', clearNote:'Löscht Profile, Feldpositionen und Einstellungen aus diesem Browser.',
+  confirmClear:'Alle gespeicherten Profile, Feldpositionen und Einstellungen in diesem Browser löschen?', privacy:'Datenschutz', legal:'Impressum', offline:'offline verfügbar'
+ },
+ es:{
+  title:'Pixelador de documentos', local:'● Funciona en local – no se sube nada',
+  s1:'1 · Cargar imágenes', pickFront:'Elegir anverso', pickBack:'Elegir reverso', loadedFront:'Anverso ✓', loadedBack:'Reverso ✓',
+  s1note:'O arrastra la imagen a la zona de la derecha / pégala con ⌘V. Después recórtala al borde del documento.',
+  s2:'2 · Finalidad (perfil)', apply:'Aplicar', presetSave:'Guardar selección actual…', delete:'Borrar', presetDelTitle:'Borrar perfil',
+  s2note:'Un perfil guarda qué campos se ocultan, el destinatario y el texto de la marca de agua.',
+  s3:'3 · Campos', allOn:'Ocultar todos', allOff:'Ninguno', addFieldShort:'+ Campo', tplLabel:'Plantilla de campos para esta cara',
+  tplDeFront:'Personalausweis DE – anverso', tplDeBack:'Personalausweis DE – reverso', tplEsFront:'DNI ES – anverso', tplEsBack:'DNI ES – reverso', tplNone:'Vacía (campos propios)',
+  load:'Cargar', s3note:'Marcado = se oculta. Arrastra los recuadros en la imagen y ajústalos por las esquinas. Doble clic en un recuadro lo activa o desactiva. Las posiciones se guardan.',
+  s4:'4 · Ocultar datos', pixel:'Pixelar', black:'Tachar', pixelSize:'Tamaño de píxel',
+  s4note:'Para números y firma lo más seguro es tachar. Los píxeles pequeños a veces se pueden reconstruir.',
+  s5:'5 · Marca de agua', wmOn:'Aplicar marca de agua', wmRecipient:'Destinatario / finalidad → {destinatario}', wmRecipientPh:'p. ej. Inmobiliaria Sol – contrato de alquiler',
+  wmText:'Texto', wmPlaceholders:'Variables: <code>{destinatario}</code>, <code>{fecha}</code> (fecha de hoy)',
+  opacity:'Opacidad', fontSize:'Tamaño de letra', spacing:'Interlineado', angle:'Ángulo', color:'Color', red:'Rojo', blue:'Azul', grey:'Gris',
+  s6:'6 · Exportar', pdfLabel:'PDF (A4, ambas caras)', scale100:'Tamaño real (85,6 mm)', scale150:'150 % – bien legible', scale200:'200 %',
+  expCombined:'Una imagen (ambas caras, JPG)', expFront:'Anverso PNG', expBack:'Reverso PNG',
+  s6note:'Las imágenes exportadas no contienen metadatos (EXIF/GPS) de la foto original.',
+  docType:'Tipo de documento', docDe:'🇩🇪 Personalausweis', docEs:'🇪🇸 DNI', front:'Anverso', back:'Reverso',
+  rotL:'Girar 90° a la izquierda', rotR:'Girar 90° a la derecha', crop:'Recortar', cropDone:'Aplicar recorte', cropReset:'Imagen completa',
+  addField:'+ Dibujar campo', frames:'Recuadros', dropTitle:'Suelta aquí la foto del documento', dropSub:'o haz clic para elegirla · foto o escaneo',
+  sideFront:'(anverso)', sideBack:'(reverso)', cropArea:'Área del documento', newField:'Campo', verpixeln:'ocultar', delField:'Borrar campo',
+  noFields:'Sin campos – carga una plantilla o «+ Campo».', noPresets:'– ninguno –',
+  hintLoad:s => `Carga el <b>${s.toLowerCase()}</b> de tu documento. Funciona mejor una foto recta sobre fondo oscuro.`,
+  hintCrop:'<b>Recortar:</b> Ajusta el recuadro amarillo a los bordes del documento y pulsa «Aplicar recorte». Las plantillas solo encajan si el documento ocupa toda la imagen.',
+  hintDraw:'<b>Nuevo campo:</b> Dibuja un rectángulo sobre la imagen.',
+  hintEdit:'Los recuadros rojos se ocultan, los azules quedan visibles. Arrastrar/ajustar · doble clic = activar/desactivar · Supr = borrar el campo seleccionado.',
+  errNotImage:'Elige un archivo de imagen (JPG, PNG, HEIC…).', errRead:'No se pudo leer la imagen. Si es HEIC, expórtala como JPG.',
+  docEsLoaded:'DNI español – campos cargados', docDeLoaded:'Personalausweis alemán – campos cargados',
+  needImage:'Primero carga una imagen.', confirmTpl:'¿Sustituir los campos de esta cara por la plantilla?',
+  presetApplied:n => `Perfil «${n}» aplicado`, presetPrompt:'Nombre del perfil (p. ej. «Banco», «Casero», «Gimnasio»):',
+  presetOverwrite:n => `¿Sobrescribir el perfil «${n}»?`, presetSaved:'Perfil guardado', presetDelete:n => `¿Borrar el perfil «${n}»?`,
+  missing:s => `Falta el ${s.toLowerCase()}.`, fileFront:'_anverso', fileBack:'_reverso',
+  preset_std:'Estándar – sin números ni firma', preset_min:'Mínimo – solo nombre y validez visibles',
+  clearData:'Borrar datos guardados', clearNote:'Borra perfiles, posiciones de campos y ajustes de este navegador.',
+  confirmClear:'¿Borrar todos los perfiles, posiciones de campos y ajustes guardados en este navegador?', privacy:'Privacidad', legal:'Aviso legal', offline:'disponible sin conexión'
+ }
+};
+let lang = (LS.get('dnipix.settings', {}).lang) || ((navigator.language || '').startsWith('es') ? 'es' : 'de');
+const t = (k, ...a) => { const v = (I18N[lang][k] ?? I18N.de[k]); return typeof v === 'function' ? v(...a) : (v ?? k); };
+const presetLabel = p => p.key ? t('preset_' + p.key) : p.name;
+
+const nid = () => 'f' + Math.random().toString(36).slice(2, 9);
+
+/* ---------- Vorlagen (normiert auf die zugeschnittene Karte, 0..1) ---------- */
+const TEMPLATES = {
+  'de-front': [
+    {name:'Ausweisnummer',        x:.68, y:.04,  w:.30, h:.10,  on:true},
+    {name:'Foto',                 x:.03, y:.19,  w:.40, h:.79,  on:false},
+    {name:'Name',                 x:.43, y:.25,  w:.32, h:.075, on:false},
+    {name:'Geburtsname',          x:.43, y:.325, w:.32, h:.07,  on:false},
+    {name:'Vornamen',             x:.43, y:.425, w:.32, h:.07,  on:false},
+    {name:'Geburtsdatum',         x:.43, y:.555, w:.22, h:.07,  on:false},
+    {name:'Staatsangehörigkeit',  x:.655,y:.555, w:.17, h:.07,  on:false},
+    {name:'Geburtsort',           x:.43, y:.655, w:.32, h:.07,  on:false},
+    {name:'Gültig bis',           x:.43, y:.79,  w:.22, h:.06, on:false},
+    {name:'CAN (Zugangsnummer)',  x:.76, y:.745, w:.21, h:.09,  on:true},
+    {name:'Unterschrift',         x:.43, y:.85,  w:.56, h:.13,  on:true}
+  ],
+  'de-back': [
+    {name:'Augenfarbe',           x:.035, y:.064, w:.22, h:.075, on:false},
+    {name:'Größe',                x:.035, y:.162, w:.22, h:.067, on:false},
+    {name:'Ausstellungsdatum',    x:.035, y:.248, w:.22, h:.069,  on:false},
+    {name:'Behörde',              x:.035, y:.361, w:.26, h:.069,  on:false},
+    {name:'Anschrift',            x:.44,  y:.066, w:.40, h:.144, on:false},
+    {name:'Ordens-/Künstlername', x:.44,  y:.385, w:.42, h:.08,  on:false},
+    {name:'Nummer & Name (Streifen)', x:.29, y:.523, w:.68, h:.052, on:true},
+    {name:'MRZ (Maschinenzone)',  x:.04,  y:.645, w:.93, h:.27,  on:true}
+  ],
+  'es-front': [
+    {name:'Número DNI',           x:.391, y:.163, w:.368, h:.087, on:true},
+    {name:'Número DNI (pequeño)', x:.014, y:.188, w:.168, h:.049, on:true},
+    {name:'Nº soporte (ventana)', x:.763, y:.143, w:.119, h:.063, on:true},
+    {name:'Foto',                 x:.014, y:.251, w:.370, h:.707, on:false},
+    {name:'Apellidos',            x:.391, y:.291, w:.380, h:.105, on:false},
+    {name:'Nombre',               x:.391, y:.427, w:.380, h:.056, on:false},
+    {name:'Sexo',                 x:.391, y:.517, w:.050, h:.054, on:false},
+    {name:'Nacionalidad',         x:.515, y:.517, w:.075, h:.054, on:false},
+    {name:'Fecha de nacimiento',  x:.787, y:.517, w:.185, h:.058, on:false},
+    {name:'Emisión',              x:.391, y:.609, w:.183, h:.058, on:false},
+    {name:'Validez',              x:.583, y:.609, w:.188, h:.058, on:false},
+    {name:'Num. soporte',         x:.391, y:.702, w:.200, h:.058, on:true},
+    {name:'Número adicional',     x:.787, y:.673, w:.158, h:.051, on:true},
+    {name:'Imagen secundaria',    x:.840, y:.604, w:.076, h:.125, on:false},
+    {name:'Firma',                x:.391, y:.770, w:.375, h:.145, on:true},
+    {name:'CAN',                  x:.777, y:.823, w:.182, h:.076, on:true}
+  ],
+  'es-back': [
+    {name:'Domicilio',            x:.276, y:.072, w:.550, h:.148, on:false},
+    {name:'Lugar de nacimiento',  x:.276, y:.342, w:.450, h:.101, on:false},
+    {name:'Hijo/a de',            x:.276, y:.523, w:.450, h:.058, on:true},
+    {name:'Equipo',               x:.014, y:.295, w:.053, h:.246, on:false},
+    {name:'Nº soporte (ventana)', x:.115, y:.141, w:.120, h:.089, on:true},
+    {name:'MRZ (Maschinenzone)',  x:.038, y:.671, w:.917, h:.226, on:true}
+  ],
+  'none': []
+};
+const ES_ALL_NUMBERS = ['Número DNI','Número DNI (pequeño)','Nº soporte (ventana)','Num. soporte','Número adicional','Firma','CAN','Hijo/a de','MRZ (Maschinenzone)'];
+const DEFAULT_PRESETS = [
+  {key:'std', name:'Standard – Nummern & Unterschrift weg',
+   redact:['Ausweisnummer','Unterschrift','CAN (Zugangsnummer)','MRZ (Maschinenzone)','Nummer & Name (Streifen)', ...ES_ALL_NUMBERS],
+   recipient:'', text:'Exclusivamente para {destinatario}. Ningún otro uso permitido. {fecha}', effect:'black'},
+  {key:'min', name:'Minimal – nur Name & Gültigkeit sichtbar',
+   redact:['Ausweisnummer','Foto','Geburtsdatum','Staatsangehörigkeit','Geburtsort','Unterschrift','Geburtsname','CAN (Zugangsnummer)',
+           'Anschrift','Augenfarbe','Größe','Ausstellungsdatum','Behörde','Ordens-/Künstlername','MRZ (Maschinenzone)','Nummer & Name (Streifen)',
+           ...ES_ALL_NUMBERS,'Sexo','Nacionalidad','Fecha de nacimiento','Emisión','Imagen secundaria','Domicilio','Lugar de nacimiento','Equipo'],
+   recipient:'', text:'Exclusivamente para {destinatario}. Ningún otro uso permitido. {fecha}', effect:'pixel'}
+];
+const tplFields = key => TEMPLATES[key].map(f => ({...f, id:nid()}));
+
+/* ---------- Zustand ---------- */
+let layouts = LS.get('dnipix.layouts', null);
+if (!layouts){                       // Migration vom alten Format (nur DE)
+  const old = LS.get('dnipix.layout', null);
+  layouts = old ? {de:old} : {};
+}
+// Vorlagen-Version: wird sie erhöht, ersetzt die neue Vorlage gespeicherte (veraltete) Feldpositionen
+const TPL_VERSION = {'de-front':2, 'de-back':3, 'es-front':2, 'es-back':2};
+layouts.ver = layouts.ver || {};
+for (const k of Object.keys(TPL_VERSION)){
+  const [d, side] = k.split('-');
+  const stored = layouts.ver[k] ?? layouts.ver[d] ?? 1;
+  if (stored < TPL_VERSION[k] && layouts[d]) delete layouts[d][side];
+  layouts.ver[k] = TPL_VERSION[k];
+}
+const savedSettings = LS.get('dnipix.settings', {});
+const docType0 = savedSettings.docType === 'es' ? 'es' : 'de';
+const layoutFor = (doc, side) => layouts[doc]?.[side] ?? tplFields(doc + '-' + side);
+const state = {
+  docType: docType0,
+  side:'front',
+  sides:{
+    front:{img:null, rot:0, crop:{x:0,y:0,w:1,h:1}, fields: layoutFor(docType0, 'front'), _cache:null},
+    back: {img:null, rot:0, crop:{x:0,y:0,w:1,h:1}, fields: layoutFor(docType0, 'back'),  _cache:null}
+  },
+  mode:'edit',          // edit | crop | draw
+  selected:null,
+  showFrames:true,
+  effect: savedSettings.effect ?? 'pixel',
+  strength: savedSettings.strength ?? 3.5,
+  wm: Object.assign({on:true, recipient:'', text:'Exclusivamente para {destinatario}. Ningún otro uso permitido. {fecha}',
+                     opacity:.35, size:3.5, spacing:2.6, angle:-25, color:'#b3261e'}, savedSettings.wm || {})
+};
+let presets = LS.get('dnipix.presets', null) || DEFAULT_PRESETS.slice();
+// Mitgelieferte Beispielprofile auf den neuesten Stand bringen (inkl. DNI-Felder)
+presets = presets.map(p => { const d = DEFAULT_PRESETS.find(x => x.key === p.key || x.name === p.name); return d && !p.doc ? {...p, key:d.key, name:d.name, redact:d.redact} : p; });
+const cur = () => state.sides[state.side];
+const saveLayout = () => {
+  const strip = fs => fs.map(({id,name,x,y,w,h,on}) => ({id,name,x,y,w,h,on}));
+  layouts[state.docType] = {front: strip(state.sides.front.fields), back: strip(state.sides.back.fields)};
+  layouts.ver = {...(layouts.ver || {}), [state.docType+'-front']: TPL_VERSION[state.docType+'-front'], [state.docType+'-back']: TPL_VERSION[state.docType+'-back']};
+  LS.set('dnipix.layouts', layouts);
+};
+const saveSettings = () => LS.set('dnipix.settings', {lang, docType:state.docType, effect:state.effect, strength:state.strength, wm:state.wm});
+
+/* ---------- Bildquelle (gedreht + zugeschnitten, gecacht) ---------- */
+function sourceCanvas(sd, cropped, maxW){
+  const r = ((sd.rot % 360) + 360) % 360;
+  const key = [r, cropped, maxW, sd.crop.x, sd.crop.y, sd.crop.w, sd.crop.h].join('|');
+  sd._cache = sd._cache || {};
+  if (sd._cache[key]) return sd._cache[key];
+
+  if (!sd._rot || sd._rot.r !== r){
+    const img = sd.img, iw = img.naturalWidth, ih = img.naturalHeight;
+    const sw = r % 180 === 0 ? iw : ih, sh = r % 180 === 0 ? ih : iw;
+    const c = document.createElement('canvas'); c.width = sw; c.height = sh;
+    const x = c.getContext('2d');
+    x.translate(sw/2, sh/2); x.rotate(r * Math.PI/180); x.drawImage(img, -iw/2, -ih/2);
+    sd._rot = {r, c};
+    sd._cache = {};
+  }
+  const R = sd._rot.c;
+  const cr = cropped ? sd.crop : {x:0,y:0,w:1,h:1};
+  const cx = cr.x*R.width, cy = cr.y*R.height, cw = Math.max(1, cr.w*R.width), ch = Math.max(1, cr.h*R.height);
+  const s = Math.min(1, maxW / cw);
+  const out = document.createElement('canvas');
+  out.width = Math.round(cw*s); out.height = Math.round(ch*s);
+  const o = out.getContext('2d');
+  o.imageSmoothingQuality = 'high';
+  o.drawImage(R, cx, cy, cw, ch, 0, 0, out.width, out.height);
+  const keys = Object.keys(sd._cache); if (keys.length > 6) delete sd._cache[keys[0]];
+  sd._cache[key] = out;
+  return out;
+}
+
+/* ---------- Effekte ---------- */
+function pixelate(ctx, x, y, w, h, block){
+  x = Math.floor(x); y = Math.floor(y); w = Math.ceil(w); h = Math.ceil(h);
+  if (w < 2 || h < 2) return;
+  const bw = Math.max(1, Math.round(w / block)), bh = Math.max(1, Math.round(h / block));
+  const t = document.createElement('canvas'); t.width = bw; t.height = bh;
+  const tc = t.getContext('2d');
+  // Zweistufig verkleinern → echter Mittelwert statt einzelner Stichproben
+  const mid = document.createElement('canvas');
+  mid.width = Math.min(w, bw*4); mid.height = Math.min(h, bh*4);
+  const mc = mid.getContext('2d'); mc.imageSmoothingQuality = 'high';
+  mc.drawImage(ctx.canvas, x, y, w, h, 0, 0, mid.width, mid.height);
+  tc.imageSmoothingQuality = 'high';
+  tc.drawImage(mid, 0, 0, mid.width, mid.height, 0, 0, bw, bh);
+  // leichtes Rauschen erschwert Rekonstruktion
+  const d = tc.getImageData(0, 0, bw, bh), a = d.data;
+  for (let i = 0; i < a.length; i += 4){
+    const n = (Math.random() - .5) * 28;
+    a[i] = clamp(a[i] + n, 0, 255); a[i+1] = clamp(a[i+1] + n, 0, 255); a[i+2] = clamp(a[i+2] + n, 0, 255);
+  }
+  tc.putImageData(d, 0, 0);
+  ctx.save(); ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(t, 0, 0, bw, bh, x, y, w, h);
+  ctx.restore();
+}
+
+function today(){
+  const d = new Date();
+  return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+}
+function wmString(){
+  const rec = state.wm.recipient.trim() || '______';
+  return state.wm.text.replace(/\{destinatario\}/g, rec).replace(/\{fecha\}/g, today()).replace(/\s+/g, ' ').trim();
+}
+function drawWatermark(ctx, W, H){
+  const txt = wmString(); if (!txt) return;
+  const wm = state.wm;
+  const fs = Math.max(8, W * wm.size / 100);
+  ctx.save();
+  ctx.globalAlpha = wm.opacity;
+  ctx.fillStyle = wm.color;
+  ctx.font = `700 ${fs}px -apple-system, "Segoe UI", Helvetica, Arial, sans-serif`;
+  ctx.textBaseline = 'middle';
+  ctx.translate(W/2, H/2);
+  ctx.rotate(wm.angle * Math.PI/180);
+  const tw = ctx.measureText(txt).width;
+  const stepX = tw + fs * 2.5, stepY = fs * wm.spacing;
+  const R = Math.hypot(W, H) / 2 + fs;
+  let row = 0;
+  for (let y = -R; y <= R; y += stepY, row++){
+    const off = (row % 2) * stepX / 2;
+    for (let x = -R - stepX + off; x <= R; x += stepX) ctx.fillText(txt, x, y);
+  }
+  ctx.restore();
+}
+
+function renderSide(sd, maxW, target){
+  const src = sourceCanvas(sd, true, maxW);
+  const c = target || document.createElement('canvas');
+  c.width = src.width; c.height = src.height;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(src, 0, 0);
+  const W = c.width, H = c.height;
+  const block = Math.max(3, W * state.strength / 100);
+  for (const f of sd.fields){
+    if (!f.on) continue;
+    const x = f.x*W, y = f.y*H, w = f.w*W, h = f.h*H;
+    if (state.effect === 'black'){ ctx.fillStyle = '#111'; ctx.fillRect(x, y, w, h); }
+    else pixelate(ctx, x, y, w, h, block);
+  }
+  if (state.wm.on) drawWatermark(ctx, W, H);
+  return c;
+}
+
+/* ---------- Ansicht ---------- */
+const view = $('#view'), overlay = $('#overlay'), stage = $('#stage'), drop = $('#drop');
+let rafId = 0;
+function scheduleRender(){ cancelAnimationFrame(rafId); rafId = requestAnimationFrame(render); }
+function render(){
+  const sd = cur();
+  stage.style.display = sd.img ? 'block' : 'none';
+  drop.style.display = sd.img ? 'none' : 'flex';
+  if (sd.img){
+    if (state.mode === 'crop'){
+      const src = sourceCanvas(sd, false, 1600);
+      view.width = src.width; view.height = src.height;
+      view.getContext('2d').drawImage(src, 0, 0);
+    } else {
+      renderSide(sd, 1600, view);
+    }
+  }
+  drawOverlay();
+  updateHint();
+}
+
+function boxEl(r, cls, label, id){
+  const b = document.createElement('div');
+  b.className = 'box ' + cls;
+  if (id) b.dataset.id = id;
+  b.style.left = r.x*100 + '%'; b.style.top = r.y*100 + '%';
+  b.style.width = r.w*100 + '%'; b.style.height = r.h*100 + '%';
+  const t = document.createElement('span'); t.className = 'tag'; t.textContent = label; b.appendChild(t);
+  for (const c of ['nw','ne','sw','se']){ const h = document.createElement('span'); h.className = 'handle'; h.dataset.c = c; b.appendChild(h); }
+  return b;
+}
+function drawOverlay(){
+  overlay.innerHTML = '';
+  overlay.classList.toggle('draw', state.mode === 'draw');
+  overlay.classList.toggle('noframes', !state.showFrames);
+  const sd = cur(); if (!sd.img) return;
+  if (state.mode === 'crop'){
+    overlay.appendChild(boxEl(sd.crop, 'crop', t('cropArea'), 'crop'));
+    return;
+  }
+  for (const f of sd.fields){
+    overlay.appendChild(boxEl(f, (f.on ? 'on ' : '') + (state.selected === f.id ? 'sel' : ''), (f.on ? '■ ' : '') + f.name, f.id));
+  }
+}
+function updateBoxStyle(r, id){
+  const b = overlay.querySelector(`.box[data-id="${id}"]`); if (!b) return;
+  b.style.left = r.x*100 + '%'; b.style.top = r.y*100 + '%';
+  b.style.width = r.w*100 + '%'; b.style.height = r.h*100 + '%';
+}
+function updateHint(){
+  const sd = cur(), h = $('#hint');
+  if (!sd.img) h.innerHTML = t('hintLoad', t(state.side));
+  else if (state.mode === 'crop') h.innerHTML = t('hintCrop');
+  else if (state.mode === 'draw') h.innerHTML = t('hintDraw');
+  else h.innerHTML = t('hintEdit');
+  $('#cropBar').classList.toggle('show', state.mode === 'crop');
+  $('#cropBtn').classList.toggle('active', state.mode === 'crop');
+  $('#addField').classList.toggle('active', state.mode === 'draw');
+  ['rotL','rotR','cropBtn','addField'].forEach(id => $('#'+id).disabled = !sd.img);
+}
+
+/* ---------- Feldliste ---------- */
+function renderFieldList(){
+  const sd = cur(), ul = $('#fieldList');
+  $('#sideLabel').textContent = state.side === 'front' ? t('sideFront') : t('sideBack');
+  ul.innerHTML = '';
+  if (!sd.fields.length){ ul.innerHTML = `<li class="empty">${t('noFields')}</li>`; return; }
+  for (const f of sd.fields){
+    const li = document.createElement('li');
+    li.className = state.selected === f.id ? 'sel' : '';
+    li.dataset.id = f.id;
+    li.innerHTML = `<input type="checkbox" ${f.on ? 'checked' : ''} title="${t('verpixeln')}"><input type="text"><button class="del" title="${t('delField')}">×</button>`;
+    const [cb, name, del] = li.children;
+    name.value = f.name;
+    cb.addEventListener('change', () => { f.on = cb.checked; saveLayout(); scheduleRender(); });
+    name.addEventListener('input', () => { f.name = name.value; saveLayout(); drawOverlay(); });
+    name.addEventListener('focus', () => select(f.id, false));
+    del.addEventListener('click', () => removeField(f.id));
+    li.addEventListener('click', e => { if (e.target === li) select(f.id); });
+    ul.appendChild(li);
+  }
+}
+function select(id, rerenderList = true){
+  state.selected = id;
+  $$('#fieldList li').forEach(li => li.classList.toggle('sel', li.dataset.id === id));
+  $$('#overlay .box').forEach(b => b.classList.toggle('sel', b.dataset.id === id));
+  if (rerenderList === 'list') renderFieldList();
+}
+function removeField(id){
+  const sd = cur();
+  sd.fields = sd.fields.filter(f => f.id !== id);
+  if (state.selected === id) state.selected = null;
+  saveLayout(); renderFieldList(); scheduleRender();
+}
+
+/* ---------- Ziehen / Größe ändern / Zeichnen ---------- */
+let drag = null;
+function normPt(e){
+  const r = overlay.getBoundingClientRect();
+  return {x: clamp((e.clientX - r.left)/r.width, 0, 1), y: clamp((e.clientY - r.top)/r.height, 0, 1)};
+}
+overlay.addEventListener('pointerdown', e => {
+  const sd = cur(); if (!sd.img) return;
+  const p = normPt(e);
+  const b = e.target.closest('.box');
+  const handle = e.target.classList.contains('handle') ? e.target.dataset.c : null;
+  if (state.mode === 'draw' && !b){
+    const f = {id:nid(), name:t('newField') + ' ' + (sd.fields.length + 1), x:p.x, y:p.y, w:0, h:0, on:true};
+    sd.fields.push(f);
+    drag = {r:f, id:f.id, type:'new', p0:p};
+    state.selected = f.id;
+    drawOverlay();
+  } else if (b){
+    const r = b.dataset.id === 'crop' ? sd.crop : sd.fields.find(f => f.id === b.dataset.id);
+    if (!r) return;
+    if (b.dataset.id !== 'crop') select(r.id);
+    drag = {r, id:b.dataset.id, type: handle ? 'resize' : 'move', c:handle, p0:p, s:{...r}, moved:false};
+  } else {
+    if (state.mode === 'edit') select(null);
+    return;
+  }
+  overlay.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+overlay.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const p = normPt(e), r = drag.r, MIN = .01;
+  const dx = p.x - drag.p0.x, dy = p.y - drag.p0.y;
+  if (Math.abs(dx) + Math.abs(dy) > .002) drag.moved = true;
+  if (drag.type === 'new'){
+    r.x = Math.min(p.x, drag.p0.x); r.y = Math.min(p.y, drag.p0.y);
+    r.w = Math.abs(p.x - drag.p0.x); r.h = Math.abs(p.y - drag.p0.y);
+  } else if (drag.type === 'move'){
+    r.x = clamp(drag.s.x + dx, 0, 1 - r.w); r.y = clamp(drag.s.y + dy, 0, 1 - r.h);
+  } else {
+    let L = drag.s.x, T = drag.s.y, Rr = drag.s.x + drag.s.w, B = drag.s.y + drag.s.h;
+    if (drag.c.includes('w')) L = clamp(L + dx, 0, Rr - MIN);
+    if (drag.c.includes('e')) Rr = clamp(Rr + dx, L + MIN, 1);
+    if (drag.c.includes('n')) T = clamp(T + dy, 0, B - MIN);
+    if (drag.c.includes('s')) B = clamp(B + dy, T + MIN, 1);
+    r.x = L; r.y = T; r.w = Rr - L; r.h = B - T;
+  }
+  updateBoxStyle(r, drag.id);
+  if (state.mode !== 'crop' && r.on) scheduleRender();
+});
+function endDrag(){
+  if (!drag) return;
+  const sd = cur();
+  if (drag.type === 'new'){
+    if (drag.r.w < .01 || drag.r.h < .01) sd.fields = sd.fields.filter(f => f.id !== drag.id);
+    state.mode = 'edit';
+    renderFieldList();
+    const inp = $(`#fieldList li[data-id="${drag.id}"] input[type=text]`);
+    if (inp){ inp.focus(); inp.select(); }
+  }
+  if (drag.id !== 'crop') saveLayout();
+  drag = null;
+  scheduleRender();
+}
+overlay.addEventListener('pointerup', endDrag);
+overlay.addEventListener('pointercancel', endDrag);
+overlay.addEventListener('dblclick', e => {
+  const b = e.target.closest('.box'); if (!b || b.dataset.id === 'crop') return;
+  const f = cur().fields.find(x => x.id === b.dataset.id); if (!f) return;
+  f.on = !f.on; saveLayout(); renderFieldList(); scheduleRender();
+});
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && state.selected && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){
+    e.preventDefault(); removeField(state.selected);
+  }
+  if (e.key === 'Escape' && state.mode !== 'edit'){ state.mode = 'edit'; scheduleRender(); }
+});
+
+/* ---------- Bilder laden ---------- */
+function loadFile(file, side){
+  if (!file || !file.type.startsWith('image/')){ toast(t('errNotImage')); return; }
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const sd = state.sides[side];
+    if (sd._url) URL.revokeObjectURL(sd._url);
+    sd._url = url;
+    sd.img = img; sd.rot = 0; sd.crop = {x:0,y:0,w:1,h:1}; sd._cache = null; sd._rot = null;
+    setSide(side);
+    state.mode = 'crop';
+    $(side === 'front' ? '#fbFront' : '#fbBack').classList.add('has');
+    sd._loaded = true; updateFileButtons();
+    scheduleRender();
+  };
+  img.onerror = () => toast(t('errRead'));
+  img.src = url;
+}
+$$('.filebtn input').forEach(inp => inp.addEventListener('change', () => { loadFile(inp.files[0], inp.dataset.side); inp.value = ''; }));
+$('#dropInput').addEventListener('change', e => { loadFile(e.target.files[0], state.side); e.target.value = ''; });
+const wrap = $('#stageWrap');
+['dragenter','dragover'].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); wrap.classList.add('dragover'); }));
+['dragleave','drop'].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); wrap.classList.remove('dragover'); }));
+wrap.addEventListener('drop', e => {
+  const files = [...e.dataTransfer.files].filter(f => f.type.startsWith('image/'));
+  if (files.length >= 2 && !state.sides.front.img && !state.sides.back.img){ loadFile(files[0], 'front'); loadFile(files[1], 'back'); }
+  else if (files[0]) loadFile(files[0], state.side);
+});
+document.addEventListener('paste', e => {
+  const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+  if (item) loadFile(item.getAsFile(), state.side);
+});
+
+/* ---------- Toolbar ---------- */
+function setSide(side){
+  state.side = side; state.selected = null;
+  if (state.mode !== 'crop') state.mode = 'edit';
+  $$('#sideTabs button').forEach(b => b.classList.toggle('active', b.dataset.side === side));
+  $('#tplSel').value = state.docType + '-' + side;
+  renderFieldList(); scheduleRender();
+}
+$$('#sideTabs button').forEach(b => b.addEventListener('click', () => { if (state.mode === 'crop') state.mode = 'edit'; setSide(b.dataset.side); }));
+function setDoc(doc){
+  if (doc !== state.docType){
+    saveLayout();
+    state.docType = doc;
+    state.sides.front.fields = layoutFor(doc, 'front');
+    state.sides.back.fields  = layoutFor(doc, 'back');
+    state.selected = null;
+    saveSettings();
+    renderPresets();
+    toast(doc === 'es' ? t('docEsLoaded') : t('docDeLoaded'));
+  }
+  $$('#docTabs button').forEach(b => b.classList.toggle('active', b.dataset.doc === doc));
+  setSide(state.side);
+}
+$$('#docTabs button').forEach(b => b.addEventListener('click', () => setDoc(b.dataset.doc)));
+function rotate(deg){
+  const sd = cur(); if (!sd.img) return;
+  sd.rot = (sd.rot + deg + 360) % 360; sd.crop = {x:0,y:0,w:1,h:1}; sd._cache = null;
+  state.mode = 'crop'; scheduleRender();
+}
+$('#rotL').addEventListener('click', () => rotate(-90));
+$('#rotR').addEventListener('click', () => rotate(90));
+$('#cropBtn').addEventListener('click', () => { state.mode = state.mode === 'crop' ? 'edit' : 'crop'; scheduleRender(); });
+$('#cropDone').addEventListener('click', () => { state.mode = 'edit'; scheduleRender(); });
+$('#cropReset').addEventListener('click', () => { cur().crop = {x:0,y:0,w:1,h:1}; scheduleRender(); });
+const startDraw = () => { if (!cur().img){ toast(t('needImage')); return; } state.mode = 'draw'; scheduleRender(); };
+$('#addField').addEventListener('click', startDraw);
+$('#addField2').addEventListener('click', startDraw);
+$('#showFrames').addEventListener('change', e => { state.showFrames = e.target.checked; drawOverlay(); });
+$('#allOn').addEventListener('click', () => { cur().fields.forEach(f => f.on = true); saveLayout(); renderFieldList(); scheduleRender(); });
+$('#allOff').addEventListener('click', () => { cur().fields.forEach(f => f.on = false); saveLayout(); renderFieldList(); scheduleRender(); });
+$('#tplApply').addEventListener('click', () => {
+  const sd = cur();
+  if (sd.fields.length && !confirm(t('confirmTpl'))) return;
+  sd.fields = tplFields($('#tplSel').value); state.selected = null;
+  saveLayout(); renderFieldList(); scheduleRender();
+});
+
+/* ---------- Effekt & Wasserzeichen ---------- */
+function syncControls(){
+  $$('[data-effect]').forEach(b => b.classList.toggle('active', b.dataset.effect === state.effect));
+  $('#strengthWrap').style.display = state.effect === 'pixel' ? '' : 'none';
+  $('#strength').value = state.strength; $('#strengthVal').textContent = state.strength + ' %';
+  const wm = state.wm;
+  $('#wmOn').checked = wm.on; $('#wmRecipient').value = wm.recipient; $('#wmText').value = wm.text;
+  $('#wmOpacity').value = wm.opacity; $('#wmOpVal').textContent = Math.round(wm.opacity*100) + ' %';
+  $('#wmSize').value = wm.size; $('#wmSizeVal').textContent = wm.size;
+  $('#wmSpacing').value = wm.spacing; $('#wmSpVal').textContent = wm.spacing;
+  $('#wmAngle').value = wm.angle; $('#wmAngVal').textContent = wm.angle + '°';
+  $('#wmColor').value = wm.color;
+}
+$$('[data-effect]').forEach(b => b.addEventListener('click', () => { state.effect = b.dataset.effect; syncControls(); saveSettings(); scheduleRender(); }));
+$('#strength').addEventListener('input', e => { state.strength = +e.target.value; syncControls(); saveSettings(); scheduleRender(); });
+const wmBind = (id, key, conv = v => v, ev = 'input') => $(id).addEventListener(ev, e => {
+  state.wm[key] = conv(e.target.type === 'checkbox' ? e.target.checked : e.target.value);
+  if (e.target.type === 'range') syncControls();
+  saveSettings(); scheduleRender();
+});
+wmBind('#wmOn', 'on', v => v, 'change');
+wmBind('#wmRecipient', 'recipient');
+wmBind('#wmText', 'text');
+wmBind('#wmOpacity', 'opacity', Number);
+wmBind('#wmSize', 'size', Number);
+wmBind('#wmSpacing', 'spacing', Number);
+wmBind('#wmAngle', 'angle', Number);
+wmBind('#wmColor', 'color');
+$$('.swatch').forEach(b => b.addEventListener('click', () => { state.wm.color = b.dataset.c; syncControls(); saveSettings(); scheduleRender(); }));
+
+/* ---------- Profile ---------- */
+function renderPresets(sel){
+  const s = $('#presetSel');
+  if (sel == null && s.value !== '') sel = s.value;
+  s.innerHTML = presets.map((p, i) => (!p.doc || p.doc === state.docType)
+      ? `<option value="${i}">${presetLabel(p).replace(/</g,'&lt;')}</option>` : '').join('') || `<option value="">${t('noPresets')}</option>`;
+  if (sel != null && [...s.options].some(o => o.value === String(sel))) s.value = sel;
+}
+const savePresets = () => LS.set('dnipix.presets', presets);
+$('#presetLoad').addEventListener('click', () => {
+  const v = $('#presetSel').value; const p = v === '' ? null : presets[+v]; if (!p) return;
+  for (const sd of Object.values(state.sides)) for (const f of sd.fields) f.on = p.redact.includes(f.name);
+  if (p.effect) state.effect = p.effect;
+  if (p.recipient) state.wm.recipient = p.recipient;
+  if (p.text) state.wm.text = p.text;
+  state.wm.on = true;
+  saveLayout(); saveSettings(); syncControls(); renderFieldList(); scheduleRender();
+  toast(t('presetApplied', presetLabel(p)));
+});
+$('#presetSave').addEventListener('click', () => {
+  const name = prompt(t('presetPrompt'), state.wm.recipient || '');
+  if (!name) return;
+  const redact = [...new Set(Object.values(state.sides).flatMap(sd => sd.fields.filter(f => f.on).map(f => f.name)))];
+  const p = {name, doc:state.docType, redact, recipient:state.wm.recipient, text:state.wm.text, effect:state.effect};
+  const i = presets.findIndex(x => x.name === name && (!x.doc || x.doc === state.docType));
+  if (i >= 0){ if (!confirm(t('presetOverwrite', name))) return; presets[i] = p; }
+  else presets.push(p);
+  savePresets(); renderPresets(i >= 0 ? i : presets.length - 1);
+  toast(t('presetSaved'));
+});
+$('#presetDel').addEventListener('click', () => {
+  const v = $('#presetSel').value; const i = +v; const p = v === '' ? null : presets[i]; if (!p) return;
+  if (!confirm(t('presetDelete', presetLabel(p)))) return;
+  presets.splice(i, 1); savePresets(); renderPresets();
+});
+
+/* ---------- Export ---------- */
+function exportCanvases(){
+  const out = [];
+  for (const side of ['front','back']){
+    const sd = state.sides[side];
+    if (sd.img) out.push({side, canvas: renderSide(sd, 2400)});
+  }
+  return out;
+}
+function baseName(){
+  const d = new Date();
+  const ds = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  const rec = state.wm.recipient.trim().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\w]+/g,'_').replace(/^_|_$/g,'').slice(0,40);
+  return (state.docType === 'es' ? 'DNI_' : 'Ausweis_') + (rec || 'Kopie') + '_' + ds;
+}
+function download(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const toBlob = (c, type, q) => new Promise(res => c.toBlob(res, type, q));
+function needImages(){
+  if (state.mode === 'crop'){ state.mode = 'edit'; scheduleRender(); }
+  const c = exportCanvases();
+  if (!c.length){ toast(t('needImage')); return null; }
+  return c;
+}
+async function exportSide(side){
+  const sd = state.sides[side];
+  if (!sd.img){ toast(t('missing', t(side))); return; }
+  const c = renderSide(sd, 2400);
+  download(await toBlob(c, 'image/png'), baseName() + (side === 'front' ? t('fileFront') : t('fileBack')) + '.png');
+}
+$('#expFront').addEventListener('click', () => exportSide('front'));
+$('#expBack').addEventListener('click', () => exportSide('back'));
+$('#expCombined').addEventListener('click', async () => {
+  const cs = needImages(); if (!cs) return;
+  const W = Math.max(...cs.map(x => x.canvas.width));
+  const pad = Math.round(W * .05);
+  const heights = cs.map(x => x.canvas.height * W / x.canvas.width);
+  const out = document.createElement('canvas');
+  out.width = W + pad*2; out.height = Math.round(heights.reduce((a,b) => a+b, 0) + pad*(cs.length + 1));
+  const ctx = out.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, out.width, out.height);
+  let y = pad;
+  cs.forEach((x, i) => { ctx.drawImage(x.canvas, pad, y, W, heights[i]); y += heights[i] + pad; });
+  download(await toBlob(out, 'image/jpeg', .9), baseName() + '.jpg');
+});
+
+/* Minimaler PDF-Writer (A4, eingebettete JPEGs) – ohne externe Bibliothek */
+async function buildPdf(images, scale){
+  const enc = new TextEncoder();
+  const PW = 595.28, PH = 841.89, MM = 72/25.4;
+  let wmm = 85.6 * scale;
+  const gap = 12, top = 20;
+  const hs = images.map(im => wmm * im.h / im.w);
+  const avail = 297 - 2*top;
+  const total = hs.reduce((a,b) => a+b, 0) + gap*(images.length - 1);
+  let k = total > avail ? avail / total : 1;
+  wmm *= k;
+  let content = '', yTop = top;
+  images.forEach((im, i) => {
+    const h = hs[i]*k, x = (210 - wmm)/2;
+    content += `q ${(wmm*MM).toFixed(2)} 0 0 ${(h*MM).toFixed(2)} ${(x*MM).toFixed(2)} ${((297 - yTop - h)*MM).toFixed(2)} cm /Im${i} Do Q\n`;
+    yTop += h + gap*k;
+  });
+  const parts = []; const offsets = []; let pos = 0;
+  const push = p => { const b = typeof p === 'string' ? enc.encode(p) : p; parts.push(b); pos += b.length; };
+  const n = 4 + images.length;
+  push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+  const obj = (id, body) => { offsets[id] = pos; push(`${id} 0 obj\n${body}\nendobj\n`); };
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  const xo = images.map((_, i) => `/Im${i} ${5+i} 0 R`).join(' ');
+  obj(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << ${xo} >> >> /Contents 4 0 R >>`);
+  obj(4, `<< /Length ${enc.encode(content).length} >>\nstream\n${content}endstream`);
+  images.forEach((im, i) => {
+    offsets[5+i] = pos;
+    push(`${5+i} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`);
+    push(im.bytes);
+    push('\nendstream\nendobj\n');
+  });
+  const xref = pos;
+  let x = `xref\n0 ${n+1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= n; i++) x += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  push(x + `trailer\n<< /Size ${n+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  return new Blob(parts, {type:'application/pdf'});
+}
+$('#expPdf').addEventListener('click', async () => {
+  const cs = needImages(); if (!cs) return;
+  const imgs = [];
+  for (const {canvas} of cs){
+    const blob = await toBlob(canvas, 'image/jpeg', .9);
+    imgs.push({w:canvas.width, h:canvas.height, bytes:new Uint8Array(await blob.arrayBuffer())});
+  }
+  download(await buildPdf(imgs, +$('#pdfScale').value), baseName() + '.pdf');
+});
+
+/* ---------- Diverses ---------- */
+let toastT;
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200); }
+window.addEventListener('resize', drawOverlay);
+
+function updateFileButtons(){
+  for (const [side, id] of [['front','#fbFront'],['back','#fbBack']]){
+    const loaded = !!state.sides[side].img;
+    $(id).classList.toggle('has', loaded);
+    $(id + ' span').textContent = loaded ? t(side === 'front' ? 'loadedFront' : 'loadedBack') : t(side === 'front' ? 'pickFront' : 'pickBack');
+  }
+}
+function applyLang(){
+  document.documentElement.lang = lang;
+  document.title = t('title');
+  $$('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
+  $$('[data-i18n-html]').forEach(el => el.innerHTML = t(el.dataset.i18nHtml));
+  $$('[data-i18n-title]').forEach(el => el.title = t(el.dataset.i18nTitle));
+  $$('[data-i18n-ph]').forEach(el => el.placeholder = t(el.dataset.i18nPh));
+  $$('#langTabs button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+  updateFileButtons(); renderPresets(); renderFieldList(); drawOverlay(); updateHint();
+}
+$$('#langTabs button').forEach(b => b.addEventListener('click', () => { lang = b.dataset.lang; saveSettings(); applyLang(); }));
+$('#clearData').addEventListener('click', () => {
+  if (!confirm(t('confirmClear'))) return;
+  try { Object.keys(localStorage).filter(k => k.startsWith('dnipix.')).forEach(k => localStorage.removeItem(k)); } catch(e){}
+  location.reload();
+});
+// Offline-Fähigkeit (nur wenn über http/https geladen, nicht als lokale Datei)
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')){
+  navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready)
+    .then(() => { $('#offlineBadge').hidden = false; }).catch(() => {});
+}
+syncControls(); setDoc(state.docType); applyLang();
+})();
+</script>
+</body>
+</html>
